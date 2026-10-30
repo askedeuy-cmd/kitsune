@@ -1,1 +1,91 @@
+name: Build Kitsune
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.2.1
+      - name: Create mod files
+        run: |
+          cat > build.gradle <<'KITSUNE_EOF'
+          plugins {
+              id 'fabric-loom' version '1.14-SNAPSHOT'
+          }
 
+          version = project.mod_version
+          group = 'kz.kitsune'
+          base { archivesName = 'kitsune' }
+
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings loom.officialMojangMappings()
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") { expand "version": project.version }
+          }
+
+          tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
+          java {
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
+          KITSUNE_EOF
+          cat > gradle.properties <<'KITSUNE_EOF'
+          org.gradle.jvmargs=-Xmx2G
+          minecraft_version=1.21.11
+          loader_version=0.18.4
+          fabric_version=0.141.1+1.21.11
+          mod_version=1.0.0
+          KITSUNE_EOF
+          cat > settings.gradle <<'KITSUNE_EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          KITSUNE_EOF
+          mkdir -p src/main/java/kz/kitsune
+          cat > src/main/java/kz/kitsune/KitsuneConfig.java <<'KITSUNE_EOF'
+          package kz.kitsune;
+
+          import com.google.gson.Gson;
+          import com.google.gson.GsonBuilder;
+          import net.fabricmc.loader.api.FabricLoader;
+
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+
+          public class KitsuneConfig {
+              public static final int UNLIMITED = 128;
+
+              /** 0 = Potato, 1 = Low, 2 = Medium, 3 = Vanilla */
+              public int graphicsLevel = 3;
+              /** Chunks, 3..32 */
+              public int renderDistance = 12;
+              /** Mobs/animals/items render distance in blocks, 8..128 (128 = unlimited) */
+              public int entityDistance = UNLIMITED;
+              /** Other players render distance in blocks, 8..128 (128 = unlimited) */
+              public int playerDistance = UNLIMITED;
+
+              private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+              private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("kitsune.json");
+              public static KitsuneConfig INSTANCE = new KitsuneConfig();
+
+              public static void load() {
+                  try {
+                      if (Files.exists(FILE)) {
+                          KitsuneConfig c = GSON.fromJson(Files.readString(FILE), KitsuneConfig.class);   
